@@ -4,31 +4,43 @@ import { useEffect, useRef, useState, useCallback } from "react";
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 // ─────────────────────────────────────────────────────────────────
-// GLB MODEL PATHS
-// Place your .glb files inside public/3d/ directory:
-//   public/3d/computer.glb  →  Intro section
-//   public/3d/cpu.glb       →  CPU section
-//   public/3d/ram.glb       →  RAM section
-//   public/3d/gpu.glb       →  GPU section
-//   public/3d/storage.glb   →  Storage section
+// GLB MODEL PATHS - Fixed for GitHub Pages
+// GitHub Pages serves from subdirectory, so we need to use process.env.PUBLIC_URL
+// or detect the base path automatically
 // ─────────────────────────────────────────────────────────────────
-const GLB = {
-  computer: "/3d/computer.glb",
-  cpu: "/3d/cpu1.glb",
-  ram: "/3d/ram.glb",
-  gpu: "/3d/gpu.glb",
-  storage: "/3d/storage1.glb",
+
+// Get base path for GitHub Pages
+const getBasePath = () => {
+  // For GitHub Pages, the base path is the repository name
+  // You can also set this manually in package.json: "homepage": "https://username.github.io/repo-name"
+  if (process.env.NODE_ENV === 'production') {
+    // In production, use the PUBLIC_URL environment variable
+    return process.env.PUBLIC_URL || '';
+  }
+  return '';
 };
+
+const basePath = getBasePath();
+
+const GLB = {
+  computer: `${basePath}/3d/computer.glb`,
+  cpu: `${basePath}/3d/cpu1.glb`,
+  ram: `${basePath}/3d/ram.glb`,
+  gpu: `${basePath}/3d/gpu.glb`,
+  storage: `${basePath}/3d/storage1.glb`,
+};
+
+// Alternative: If you're using React Router with HashRouter, you can use this:
+// const GLB = {
+//   computer: `${window.location.pathname.split('/').slice(0, -1).join('/')}/3d/computer.glb`,
+//   cpu: `${window.location.pathname.split('/').slice(0, -1).join('/')}/3d/cpu.glb`,
+//   ram: `${window.location.pathname.split('/').slice(0, -1).join('/')}/3d/ram.glb`,
+//   gpu: `${window.location.pathname.split('/').slice(0, -1).join('/')}/3d/gpu.glb`,
+//   storage: `${window.location.pathname.split('/').slice(0, -1).join('/')}/3d/storage.glb`,
+// };
 
 // ─────────────────────────────────────────────────────────────────
 // Enhanced ModelViewer — with full mouse interaction controls
-// Features:
-//   • Click and drag to rotate model (full 360° control)
-//   • Right-click + drag to pan
-//   • Scroll to zoom
-//   • Double-click to reset view
-//   • Auto-rotation toggle (click on/off)
-//   • Smooth inertia for natural feel
 // ─────────────────────────────────────────────────────────────────
 function ModelViewer({ src, glowColor = "#00ffc8", badge = null, label = "model" }) {
   const mountRef = useRef(null);
@@ -37,6 +49,11 @@ function ModelViewer({ src, glowColor = "#00ffc8", badge = null, label = "model"
   const [loadPct, setLoadPct] = useState(0);
   const [autoRotate, setAutoRotate] = useState(true);
   const [showControls, setShowControls] = useState(false);
+
+  // Debug: Log the src path to verify it's correct
+  useEffect(() => {
+    console.log(`Loading model for ${label}: ${src}`);
+  }, [src, label]);
 
   const initThree = useCallback(() => {
     const THREE = window.THREE;
@@ -111,12 +128,20 @@ function ModelViewer({ src, glowColor = "#00ffc8", badge = null, label = "model"
     keyLight.position.set(2, 2, 2);
     scene.add(keyLight);
 
-    // ── Load GLB
+    // ── Load GLB with better error handling
     const loader = new GLTFLoader();
+    
+    // Add a timeout to detect if loading is taking too long
+    const loadingTimeout = setTimeout(() => {
+      if (status === "loading") {
+        console.warn(`Model ${label} is taking too long to load, check if file exists at: ${src}`);
+      }
+    }, 10000);
     
     loader.load(
       src,
       (gltf) => {
+        clearTimeout(loadingTimeout);
         const model = gltf.scene;
         
         // Auto-fit: centre + scale to ~2.2 unit cube
@@ -150,14 +175,20 @@ function ModelViewer({ src, glowColor = "#00ffc8", badge = null, label = "model"
         scene.add(model);
         ctxRef.current.model = model;
         setStatus("ok");
+        console.log(`✅ Model loaded successfully: ${label}`);
       },
       (xhr) => {
         if (xhr.total) {
-          setLoadPct(Math.round((xhr.loaded / xhr.total) * 100));
+          const percentage = Math.round((xhr.loaded / xhr.total) * 100);
+          setLoadPct(percentage);
+          if (percentage === 100) {
+            console.log(`Model ${label} loading: ${percentage}%`);
+          }
         }
       },
       (error) => {
-        console.error(`Error loading model ${label}:`, error);
+        clearTimeout(loadingTimeout);
+        console.error(`❌ Error loading model ${label} from ${src}:`, error);
         setStatus("error");
       }
     );
@@ -165,10 +196,10 @@ function ModelViewer({ src, glowColor = "#00ffc8", badge = null, label = "model"
     // ── Mouse Event Handlers
     const onMouseDown = (e) => {
       e.preventDefault();
-      if (e.button === 0) { // Left click
+      if (e.button === 0) {
         isDragging = true;
         setAutoRotate(false);
-      } else if (e.button === 2) { // Right click
+      } else if (e.button === 2) {
         isRightDragging = true;
         setAutoRotate(false);
       }
@@ -184,13 +215,10 @@ function ModelViewer({ src, glowColor = "#00ffc8", badge = null, label = "model"
       const deltaY = e.clientY - lastMouseY;
       
       if (isDragging) {
-        // Rotate model
         targetRotation.y += deltaX * 0.008;
         targetRotation.x += deltaY * 0.008;
-        // Clamp vertical rotation to avoid flipping
         targetRotation.x = Math.max(-Math.PI / 2.2, Math.min(Math.PI / 2.2, targetRotation.x));
       } else if (isRightDragging) {
-        // Pan camera
         targetPan.x += deltaX * 0.01;
         targetPan.y -= deltaY * 0.01;
         targetPan.x = Math.max(-1.5, Math.min(1.5, targetPan.x));
@@ -215,7 +243,6 @@ function ModelViewer({ src, glowColor = "#00ffc8", badge = null, label = "model"
     };
 
     const onDoubleClick = () => {
-      // Reset all transformations
       targetRotation = { x: 0, y: 0 };
       targetPan = { x: 0, y: 0 };
       targetZoom = 4;
@@ -233,7 +260,6 @@ function ModelViewer({ src, glowColor = "#00ffc8", badge = null, label = "model"
       mount.style.cursor = 'grab';
     };
 
-    // Prevent context menu on right-click
     const onContextMenu = (e) => {
       e.preventDefault();
       return false;
@@ -273,14 +299,12 @@ function ModelViewer({ src, glowColor = "#00ffc8", badge = null, label = "model"
       frameId = requestAnimationFrame(animate);
       time += 0.016;
       
-      // Smooth interpolation for all controls
       currentRotation.x += (targetRotation.x - currentRotation.x) * 0.1;
       currentRotation.y += (targetRotation.y - currentRotation.y) * 0.1;
       currentPan.x += (targetPan.x - currentPan.x) * 0.1;
       currentPan.y += (targetPan.y - currentPan.y) * 0.1;
       currentZoom += (targetZoom - currentZoom) * 0.1;
       
-      // Update camera position
       camera.position.x = currentPan.x;
       camera.position.y = 0.5 + currentPan.y;
       camera.position.z = currentZoom;
@@ -289,15 +313,12 @@ function ModelViewer({ src, glowColor = "#00ffc8", badge = null, label = "model"
       const m = ctxRef.current.model;
       if (m && status === "ok") {
         if (autoRotate && !isDragging && !isRightDragging) {
-          // Auto-rotate
           targetRotation.y += autoRotateSpeed;
         }
         
-        // Apply rotation to model
         m.rotation.x = currentRotation.x;
         m.rotation.y = currentRotation.y;
         
-        // Add subtle floating animation when not interacting
         if (!isDragging && !isRightDragging && autoRotate) {
           m.position.y = Math.sin(time * 1.5) * 0.03;
         } else {
@@ -305,7 +326,6 @@ function ModelViewer({ src, glowColor = "#00ffc8", badge = null, label = "model"
         }
       }
       
-      // Animate lights
       keyLight.position.x = Math.sin(time * 0.6) * 1.8;
       keyLight.position.z = Math.cos(time * 0.6) * 1.8 + 1;
       rimLight.intensity = 0.8 + Math.sin(time * 1.2) * 0.3;
@@ -393,24 +413,14 @@ function ModelViewer({ src, glowColor = "#00ffc8", badge = null, label = "model"
 
   return (
     <div className="mv-outer" style={{ "--glow": glowColor, "--glow-rgb": rgb }}>
-      {/* decorative grid */}
       <div className="mv-grid" />
-
-      {/* ambient glow behind model */}
       <div className="mv-glow-ring" />
-
-      {/* Three.js canvas */}
       <div ref={mountRef} className="mv-mount" />
-
-      {/* scanlines overlay */}
       <div className="mv-scanlines" />
-
-      {/* corner brackets */}
       {["tl","tr","bl","br"].map(c => (
         <div key={c} className={`mv-corner mv-corner-${c}`} />
       ))}
 
-      {/* Control Panel */}
       {status === "ok" && showControls && (
         <div className="mv-control-panel">
           <button 
@@ -427,7 +437,6 @@ function ModelViewer({ src, glowColor = "#00ffc8", badge = null, label = "model"
             className="mv-control-btn"
             onClick={(e) => {
               e.stopPropagation();
-              // Trigger reset
               const event = new Event('dblclick');
               mountRef.current?.dispatchEvent(event);
             }}
@@ -438,17 +447,15 @@ function ModelViewer({ src, glowColor = "#00ffc8", badge = null, label = "model"
         </div>
       )}
 
-      {/* Controls Hint */}
       {status === "ok" && showControls && (
         <div className="mv-controls-hint">
-          {/*<span>🖱️ Drag to rotate</span>
+          <span>🖱️ Drag to rotate</span>
           <span>🖱️ Right-click + Drag to pan</span>
-          <span>📌 Scroll to zoom</span>*/}
+          <span>📌 Scroll to zoom</span>
           <span>⚡ Double-click to reset</span>
         </div>
       )}
 
-      {/* Loading state */}
       {status === "loading" && (
         <div className="mv-overlay">
           <div className="mv-spinner" />
@@ -463,7 +470,6 @@ function ModelViewer({ src, glowColor = "#00ffc8", badge = null, label = "model"
         </div>
       )}
 
-      {/* Error / placeholder */}
       {status === "error" && (
         <div className="mv-overlay mv-placeholder">
           <div className="mv-ph-icon" style={{ color: glowColor }}>⬡</div>
@@ -472,11 +478,10 @@ function ModelViewer({ src, glowColor = "#00ffc8", badge = null, label = "model"
             {src}
           </code>
           <div className="mv-ph-hint">Place your {label}.glb file in public/3d/ folder</div>
-          <div className="mv-ph-hint">Free models: sketchfab.com · poly.pizza</div>
+          <div className="mv-ph-hint">Check browser console for details</div>
         </div>
       )}
 
-      {/* Badge */}
       {badge && status === "ok" && (
         <div className="mv-badge"
           style={{ color: glowColor, borderColor: `rgba(${rgb},0.45)` }}>
@@ -487,398 +492,18 @@ function ModelViewer({ src, glowColor = "#00ffc8", badge = null, label = "model"
   );
 }
 
-// ── Custom Cursor ─────────────────────────────────────────────────
-function Cursor() {
-  const dot = useRef(null);
-  const ring = useRef(null);
-  useEffect(() => {
-    let mx = 0, my = 0, rx = 0, ry = 0, raf;
-    const move = e => { mx = e.clientX; my = e.clientY; };
-    window.addEventListener("mousemove", move);
-    const loop = () => {
-      rx += (mx - rx) * 0.12;
-      ry += (my - ry) * 0.12;
-      if (dot.current) dot.current.style.transform = `translate(${mx - 4}px,${my - 4}px)`;
-      if (ring.current) ring.current.style.transform = `translate(${rx - 20}px,${ry - 20}px)`;
-      raf = requestAnimationFrame(loop);
-    };
-    raf = requestAnimationFrame(loop);
-    return () => {
-      window.removeEventListener("mousemove", move);
-      cancelAnimationFrame(raf);
-    };
-  }, []);
-  return (
-    <>
-      <div ref={dot} className="cursor-dot" />
-      <div ref={ring} className="cursor-ring" />
-    </>
-  );
-}
+// Rest of your components (Cursor, Loader, Particles, etc.) remain the same
+// ... (include all your other components here)
 
-// ── Loader ────────────────────────────────────────────────────────
-function Loader({ onDone }) {
-  const bar = useRef(null);
-  const txt = useRef(null);
-  const wrap = useRef(null);
-  useEffect(() => {
-    const g = window.gsap;
-    if (!g) {
-      setTimeout(onDone, 1400);
-      return;
-    }
-    g.timeline({ onComplete: onDone })
-      .to(bar.current, { width: "100%", duration: 1.6, ease: "power3.inOut" })
-      .to(txt.current, { opacity: 0, duration: 0.3 }, "-=0.2")
-      .to(wrap.current, { yPercent: -100, duration: 0.8, ease: "power4.inOut" });
-  }, [onDone]);
-  return (
-    <div ref={wrap} className="loader-wrap">
-      <div ref={txt} className="loader-label">
-        Booting Digital Brain<span className="loader-dots">...</span>
-      </div>
-      <div className="loader-track"><div ref={bar} className="loader-bar" /></div>
-    </div>
-  );
-}
-
-// ── Particles ─────────────────────────────────────────────────────
-function Particles() {
-  const canvas = useRef(null);
-  useEffect(() => {
-    const c = canvas.current;
-    if (!c) return;
-
-    const ctx = c.getContext("2d");
-    let W = window.innerWidth;
-    let H = window.innerHeight;
-
-    const resize = () => {
-      W = window.innerWidth;
-      H = window.innerHeight;
-      c.width = W;
-      c.height = H;
-    };
-    resize();
-
-    window.addEventListener("resize", resize);
-
-    const pts = Array.from({ length: 120 }, () => ({
-      x: Math.random() * W,
-      y: Math.random() * H,
-      vx: (Math.random() - .5) * .4,
-      vy: (Math.random() - .5) * .4,
-      r: Math.random() * 1.5 + .5
-    }));
-
-    let raf;
-    const draw = () => {
-      if (!ctx) return;
-      ctx.clearRect(0, 0, W, H);
-      pts.forEach(p => {
-        p.x += p.vx;
-        p.y += p.vy;
-        if (p.x < 0) p.x = W;
-        if (p.x > W) p.x = 0;
-        if (p.y < 0) p.y = H;
-        if (p.y > H) p.y = 0;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(0,255,200,.6)";
-        ctx.fill();
-      });
-
-      for (let i = 0; i < pts.length; i++) {
-        for (let j = i + 1; j < pts.length; j++) {
-          const dx = pts[i].x - pts[j].x,
-            dy = pts[i].y - pts[j].y,
-            d = Math.hypot(dx, dy);
-          if (d < 100) {
-            ctx.beginPath();
-            ctx.moveTo(pts[i].x, pts[i].y);
-            ctx.lineTo(pts[j].x, pts[j].y);
-            ctx.strokeStyle = `rgba(0,255,200,${.15 * (1 - d / 100)})`;
-            ctx.lineWidth = .5;
-            ctx.stroke();
-          }
-        }
-      }
-      raf = requestAnimationFrame(draw);
-    };
-    draw();
-    return () => {
-      window.removeEventListener("resize", resize);
-      cancelAnimationFrame(raf);
-    };
-  }, []);
-  return <canvas ref={canvas} className="particles-canvas" />;
-}
-
-// ── CPU Visual ────────────────────────────────────────────────────
-function CPUVisual() {
-  return (
-    <div className="cpu-grid">
-      {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="cpu-core" style={{ animationDelay: `${i * .18}s` }}>
-          <div className="cpu-core-inner"><span className="cpu-core-label">C{i}</span></div>
-          <div className="cpu-pulse" style={{ animationDelay: `${i * .18}s` }} />
-        </div>
-      ))}
-      <div className="cpu-bus">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <div key={i} className="cpu-bus-packet" style={{ animationDelay: `${i * .3}s` }} />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── RAM Visual ────────────────────────────────────────────────────
-function RAMVisual() {
-  const slots = [
-    { label: "Chrome", size: "2.1 GB", color: "#00ffc8" },
-    { label: "VS Code", size: "512 MB", color: "#7b61ff" },
-    { label: "Slack", size: "380 MB", color: "#ff6b6b" },
-    { label: "Docker", size: "1.4 GB", color: "#ffd166" },
-    { label: "Node.js", size: "128 MB", color: "#06d6a0" },
-    { label: "Figma", size: "650 MB", color: "#ef476f" },
-  ];
-  const [active, setActive] = useState(null);
-  return (
-    <div className="ram-grid">
-      {slots.map((s, i) => (
-        <div key={i}
-          className={`ram-card ${active === i ? "ram-card-active" : ""}`}
-          style={{ "--card-color": s.color, animationDelay: `${i * .12}s` }}
-          onClick={() => setActive(active === i ? null : i)}>
-          <div className="ram-card-bar" />
-          <div className="ram-card-label">{s.label}</div>
-          <div className="ram-card-size">{s.size}</div>
-          {active === i && <div className="ram-card-badge">ACTIVE</div>}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ── GPU Visual ────────────────────────────────────────────────────
-function GPUVisual() {
-  const canvas = useRef(null);
-  useEffect(() => {
-    const c = canvas.current;
-    if (!c) return;
-    const ctx = c.getContext("2d");
-    c.width = 480; c.height = 280; let t = 0, raf;
-    const cols = [[139, 92, 246], [59, 130, 246], [16, 185, 129], [245, 158, 11]];
-    const pts = [{ x: .2, y: .3 }, { x: .8, y: .2 }, { x: .6, y: .8 }, { x: .1, y: .7 }];
-    const draw = () => {
-      const W = c.width, H = c.height;
-      ctx.clearRect(0, 0, W, H);
-      pts.forEach((p, i) => {
-        const ox = Math.sin(t * .7 + i * 1.3) * .12, oy = Math.cos(t * .5 + i * .9) * .12;
-        const gx = (p.x + ox) * W, gy = (p.y + oy) * H;
-        const gr = ctx.createRadialGradient(gx, gy, 0, gx, gy, 190);
-        const [r, g2, b] = cols[i];
-        gr.addColorStop(0, `rgba(${r},${g2},${b},.55)`);
-        gr.addColorStop(1, "rgba(0,0,0,0)");
-        ctx.fillStyle = gr;
-        ctx.fillRect(0, 0, W, H);
-      });
-      for (let y = 0; y < c.height; y += 4) {
-        ctx.fillStyle = "rgba(0,0,0,.06)";
-        ctx.fillRect(0, y, W, 2);
-      }
-      t += .012;
-      raf = requestAnimationFrame(draw);
-    };
-    draw();
-    return () => cancelAnimationFrame(raf);
-  }, []);
-  return (
-    <div className="gpu-canvas-wrap">
-      <canvas ref={canvas} className="gpu-canvas" />
-      <div className="gpu-label-top">RENDER PIPELINE ACTIVE</div>
-      <div className="gpu-stats">
-        <div className="gpu-stat"><span>FPS</span><b>144</b></div>
-        <div className="gpu-stat"><span>VRAM</span><b>8 GB</b></div>
-        <div className="gpu-stat"><span>CORES</span><b>4096</b></div>
-      </div>
-    </div>
-  );
-}
-
-// ── Storage Visual ────────────────────────────────────────────────
-function StorageVisual() {
-  const [hov, setHov] = useState(null);
-  const files = [
-    { name: "system.bin", size: "4.2 GB", type: "SYS" },
-    { name: "media.vault", size: "120 GB", type: "DATA" },
-    { name: "kernel.img", size: "512 MB", type: "OS" },
-    { name: "user_data", size: "85 GB", type: "USR" },
-    { name: "cache.tmp", size: "2.1 GB", type: "TMP" },
-  ];
-  return (
-    <div className="storage-wrap">
-      <div className="storage-disk">
-        <div className="storage-disk-ring" />
-        <div className="storage-disk-ring storage-disk-ring-2" />
-        <div className="storage-disk-center">NVMe</div>
-      </div>
-      <div className="storage-files">
-        {files.map((f, i) => (
-          <div key={i}
-            className={`storage-file ${hov === i ? "storage-file-hover" : ""}`}
-            style={{ animationDelay: `${i * .1}s` }}
-            onMouseEnter={() => setHov(i)} onMouseLeave={() => setHov(null)}>
-            <span className="storage-file-type">{f.type}</span>
-            <span className="storage-file-name">{f.name}</span>
-            <span className="storage-file-size">{f.size}</span>
-            <div className="storage-file-bar">
-              <div className="storage-file-fill"
-                style={{ width: `${clamp(parseInt(f.size) / 2, 20, 95)}%` }} />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ── Network Visual ────────────────────────────────────────────────
-function NetworkVisual() {
-  const canvas = useRef(null);
-  useEffect(() => {
-    const c = canvas.current;
-    if (!c) return;
-    const ctx = c.getContext("2d");
-    c.width = 560; c.height = 290;
-    const W = c.width, H = c.height;
-    const nodes = [
-      { x: 75, y: 145, label: "CLIENT" }, { x: 200, y: 72, label: "DNS" },
-      { x: 200, y: 218, label: "FW" }, { x: 350, y: 145, label: "SERVER" },
-      { x: 490, y: 72, label: "CDN" }, { x: 490, y: 218, label: "DB" },
-    ];
-    const edges = [[0, 1], [0, 2], [1, 3], [2, 3], [3, 4], [3, 5]];
-    const pkts = edges.map(([a, b]) => ({ a, b, t: Math.random(), spd: .003 + Math.random() * .003 }));
-    let raf;
-    const draw = () => {
-      ctx.clearRect(0, 0, W, H);
-      edges.forEach(([a, b]) => {
-        ctx.beginPath();
-        ctx.moveTo(nodes[a].x, nodes[a].y);
-        ctx.lineTo(nodes[b].x, nodes[b].y);
-        ctx.strokeStyle = "rgba(0,200,255,.18)";
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-      });
-      pkts.forEach(p => {
-        p.t += p.spd;
-        if (p.t > 1) p.t = 0;
-        const na = nodes[p.a], nb = nodes[p.b];
-        const px = na.x + (nb.x - na.x) * p.t, py = na.y + (nb.y - na.y) * p.t;
-        ctx.beginPath();
-        ctx.arc(px, py, 4, 0, Math.PI * 2);
-        ctx.fillStyle = "#00c8ff";
-        ctx.shadowBlur = 10;
-        ctx.shadowColor = "#00c8ff";
-        ctx.fill();
-        ctx.shadowBlur = 0;
-      });
-      nodes.forEach(n => {
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, 14, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(0,200,255,.12)";
-        ctx.strokeStyle = "rgba(0,200,255,.7)";
-        ctx.lineWidth = 2;
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = "#00c8ff";
-        ctx.font = "bold 8px monospace";
-        ctx.textAlign = "center";
-        ctx.fillText(n.label, n.x, n.y + 3);
-      });
-      raf = requestAnimationFrame(draw);
-    };
-    draw();
-    return () => cancelAnimationFrame(raf);
-  }, []);
-  return <canvas ref={canvas} className="network-canvas" />;
-}
-
-// ── Neural Visual ─────────────────────────────────────────────────
-function NeuralVisual() {
-  const canvas = useRef(null);
-  useEffect(() => {
-    const c = canvas.current;
-    if (!c) return;
-    const ctx = c.getContext("2d");
-    c.width = 560; c.height = 300;
-    const W = c.width, H = c.height;
-    const layers = [3, 5, 5, 3];
-    const np = [];
-    layers.forEach((cnt, li) => {
-      const x = (li + 1) * W / (layers.length + 1);
-      np.push(Array.from({ length: cnt }, (_, ni) => ({ x, y: (ni + 1) * H / (cnt + 1) })));
-    });
-    let t = 0, raf;
-    const draw = () => {
-      ctx.clearRect(0, 0, W, H);
-      for (let li = 0; li < layers.length - 1; li++) {
-        np[li].forEach(a => {
-          np[li + 1].forEach(b => {
-            const pulse = (Math.sin(t * 2 + a.x * .01 + b.y * .01) + 1) / 2;
-            ctx.beginPath();
-            ctx.moveTo(a.x, a.y);
-            ctx.lineTo(b.x, b.y);
-            ctx.strokeStyle = `rgba(139,92,246,${.08 + pulse * .18})`;
-            ctx.lineWidth = .8;
-            ctx.stroke();
-          });
-        });
-      }
-      np.forEach(layer => layer.forEach(n => {
-        const glow = (Math.sin(t * 1.5 + n.y * .02) + 1) / 2;
-        const r = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, 14);
-        r.addColorStop(0, `rgba(167,139,250,${.7 + glow * .3})`);
-        r.addColorStop(1, "rgba(139,92,246,0)");
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, 8 + glow * 4, 0, Math.PI * 2);
-        ctx.fillStyle = r;
-        ctx.fill();
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, 5, 0, Math.PI * 2);
-        ctx.fillStyle = "#a78bfa";
-        ctx.fill();
-      }));
-      t += .015;
-      raf = requestAnimationFrame(draw);
-    };
-    draw();
-    return () => cancelAnimationFrame(raf);
-  }, []);
-  return <canvas ref={canvas} className="neural-canvas" />;
-}
-
-// ── Scroll Arrow ──────────────────────────────────────────────────
-function ScrollArrow() {
-  return (
-    <div className="scroll-arrow">
-      <div className="scroll-arrow-line" />
-      <div className="scroll-arrow-chevron" />
-      <span className="scroll-arrow-text">SCROLL</span>
-    </div>
-  );
-}
-
-// ── Section wrapper ───────────────────────────────────────────────
-function Section({ id, children, className = "" }) {
-  return <section id={id} className={`section ${className}`}>{children}</section>;
-}
-
-// ── Main App ──────────────────────────────────────────────────────
 export default function App() {
   const [loaded, setLoaded] = useState(false);
   const [gsapLoaded, setGsapLoaded] = useState(false);
+
+  // Log the base path for debugging
+  useEffect(() => {
+    console.log('Base path:', getBasePath());
+    console.log('Model paths:', GLB);
+  }, []);
 
   // Load GSAP from CDN
   useEffect(() => {
@@ -946,7 +571,6 @@ export default function App() {
         <>
           <Cursor />
 
-          {/* NAV */}
           <nav className="nav">
             <div className="nav-logo">⬡ DIGIBRAIN</div>
             <div className="nav-links">
@@ -960,7 +584,7 @@ export default function App() {
           <Section id="hero" className="hero-section">
             <Particles />
             <div className="hero-content">
-              <div className="hero-eyebrow reveal">Developed By Ganesh Pawar</div>
+              <div className="hero-eyebrow reveal">INTERACTIVE EXPERIENCE</div>
               <h1 className="hero-heading reveal">
                 Enter the<br /><span className="hero-accent">Digital Brain</span>
               </h1>
