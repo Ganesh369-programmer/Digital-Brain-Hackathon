@@ -3,5 +3,5 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  base: "/Digital-Brain-Hackathon-/"  // 👈 MUST MATCH REPO NAME EXACTLY
+  base: "/Digital-Brain-Hackathon/"  // 👈 MUST MATCH REPO NAME EXACTLY
 })
