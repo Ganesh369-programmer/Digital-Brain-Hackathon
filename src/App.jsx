@@ -944,7 +944,7 @@ export default function App() {
           <Section id="hero" className="hero-section">
             <Particles />
             <div className="hero-content">
-              <div className="hero-eyebrow reveal">INTERACTIVE EXPERIENCE</div>
+              <div className="hero-eyebrow reveal">Developed By Ganesh Pawar</div>
               <h1 className="hero-heading reveal">
                 Enter the<br /><span className="hero-accent">Digital Brain</span>
               </h1>
