@@ -23,11 +23,11 @@ const getBasePath = () => {
 const basePath = getBasePath();
 
 const GLB = {
-  computer: `${basePath}/3d/computer.glb`,
-  cpu: `${basePath}/3d/cpu1.glb`,
-  ram: `${basePath}/3d/ram.glb`,
-  gpu: `${basePath}/3d/gpu.glb`,
-  storage: `${basePath}/3d/storage1.glb`,
+  computer: window.location.origin + '/3d/computer.glb',
+  cpu: window.location.origin + '/3d/cpu.glb',
+  ram: window.location.origin + '/3d/ram.glb',
+  gpu: window.location.origin + '/3d/gpu.glb',
+  storage: window.location.origin + '/3d/storage.glb',
 };
 
 // Alternative: If you're using React Router with HashRouter, you can use this:
